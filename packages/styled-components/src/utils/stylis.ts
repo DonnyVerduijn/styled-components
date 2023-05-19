@@ -4,8 +4,8 @@ import { EMPTY_ARRAY, EMPTY_OBJECT } from './empties';
 import throwStyledError from './error';
 import { phash, SEED } from './hash';
 
+const AMP_REGEX = /&/g;
 const COMMENT_REGEX = /^\s*\/\/.*$/gm;
-const COMPLEX_SELECTOR_PREFIX = [':', '[', '.', '#'];
 
 export type ICreateStylisInstance = {
   options?: { namespace?: string; prefix?: boolean };
@@ -61,13 +61,19 @@ export default function createStylisInstance(
   let _componentId: string;
   let _selector: string;
   let _selectorRegexp: RegExp;
-  let _consecutiveSelfRefRegExp: RegExp;
 
   const selfReferenceReplacer: Parameters<String['replace']>[1] = (match, offset, string) => {
     if (
-      // do not replace the first occurrence if it is complex (has a modifier)
-      (offset === 0 ? !COMPLEX_SELECTOR_PREFIX.includes(string[_selector.length]) : true) && // no consecutive self refs (.b.b); that is a precedence boost and treated differently
-      !string.match(_consecutiveSelfRefRegExp)
+      /**
+       * We only want to refer to the static class directly in the following scenarios:
+       *
+       * 1. The selector is alone on the line `& { color: red; }`
+       * 2. The selector is part of a self-reference selector `& + & { color: red; }`
+       */
+      string === _selector ||
+      (string.startsWith(_selector) &&
+        string.endsWith(_selector) &&
+        string.replaceAll(_selector, '').length > 0)
     ) {
       return `.${_componentId}`;
     }
@@ -89,10 +95,10 @@ export default function createStylisInstance(
    */
   const selfReferenceReplacementPlugin: Middleware = element => {
     if (element.type === RULESET && element.value.includes('&')) {
-      (element.props as string[])[0] = element.props[0].replace(
-        _selectorRegexp,
-        selfReferenceReplacer
-      );
+      (element.props as string[])[0] = element.props[0]
+        // catch any hanging references that stylis missed
+        .replace(AMP_REGEX, _selector)
+        .replace(_selectorRegexp, selfReferenceReplacer);
     }
   };
 
@@ -122,7 +128,6 @@ export default function createStylisInstance(
     _componentId = componentId;
     _selector = selector;
     _selectorRegexp = new RegExp(`\\${_selector}\\b`, 'g');
-    _consecutiveSelfRefRegExp = new RegExp(`(\\${_selector}\\b){2,}`);
 
     const flatCSS = css.replace(COMMENT_REGEX, '');
     let compiled = compile(prefix || selector ? `${prefix} ${selector} { ${flatCSS} }` : flatCSS);

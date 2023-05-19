@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Attrs,
-  AttrsArg,
   ExecutionProps,
   Interpolation,
   IStyledComponent,
@@ -45,6 +44,9 @@ type PropsSatisfiedByAttrs<
   OptionalIntersection<Props, Result> &
   Partial<Omit<Result, keyof Props | 'as'>>;
 
+// Prevents TypeScript from inferring generic argument
+type NoInfer<T> = [T][T extends any ? 0 : never];
+
 export interface Styled<
   R extends Runtime,
   Target extends StyledTarget<R>,
@@ -53,8 +55,8 @@ export interface Styled<
   RuntimeInjectedProps extends ExecutionProps = object
 > {
   <Props extends object = object, Statics extends object = object>(
-    initialStyles: Styles<OuterProps & RuntimeInjectedProps & Props>,
-    ...interpolations: Interpolation<OuterProps & RuntimeInjectedProps & Props>[]
+    initialStyles: Styles<OuterProps & RuntimeInjectedProps & NoInfer<Props>>,
+    ...interpolations: Interpolation<OuterProps & RuntimeInjectedProps & NoInfer<Props>>[]
   ): // @ts-expect-error KnownTarget is a subset of StyledTarget<R>
   IStyledComponent<R, ExtractAttrsTarget<R, RuntimeInjectedProps, Target>, OuterProps & Props> &
     OuterStatics &
@@ -66,7 +68,7 @@ export interface Styled<
     // @ts-expect-error KnownTarget is a subset of StyledTarget<R>
     TTarget extends StyledTarget<R> = ExtractAttrsTarget<R, TResult, Target>
   >(
-    attrs: AttrsArg<T extends (...args: any) => infer P ? OuterProps & P : OuterProps & T>
+    attrs: Attrs<T extends (...args: any) => infer P ? OuterProps & P : OuterProps & T>
   ) => Styled<
     R,
     TTarget,
@@ -105,13 +107,13 @@ export default function constructWithOptions<
   ) =>
     componentConstructor<Props, Statics>(
       tag,
-      options as StyledOptions<R, OuterProps & Props>,
+      options as unknown as StyledOptions<R, OuterProps & Props>,
       css(initialStyles, ...interpolations)
     );
 
   /* Modify/inject new props at runtime */
   templateFunction.attrs = <T extends Attrs>(
-    attrs: AttrsArg<T extends (...args: any) => infer P ? OuterProps & P : OuterProps & T>
+    attrs: Attrs<T extends (...args: any) => infer P ? OuterProps & P : OuterProps & T>
   ) =>
     constructWithOptions<R, Target, PropsSatisfiedByAttrs<T, OuterProps>, OuterStatics>(
       componentConstructor as unknown as IStyledComponentFactory<
